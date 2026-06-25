@@ -1,10 +1,11 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <iostream>
-#include <vector> // 
+#include <vector> 
+#include "i2cSensor.h"
 #define MPU_ADDR 0x68
 
-byte deviceFinder(){
+byte i2cSensor::deviceFinder(){
   byte error, address;
   int nDevices;
   Serial.println("Scanning...");
@@ -37,7 +38,7 @@ byte deviceFinder(){
   }
 }
 
-void powerUp(){
+void i2cSensor::powerUp(){
     // ----- MPU6050 Initialization -----
   Wire.beginTransmission(MPU_ADDR);
   Wire.write(0x6B);           // PWR_MGMT_1 register
@@ -59,7 +60,7 @@ void powerUp(){
   Serial.println("MPU6050 Initialized for Raw Accelerometer Readings");
 }
 
-byte readByte(byte address){
+byte i2cSensor::readByte(byte address){
     Wire.beginTransmission(MPU_ADDR);
     Wire.write(address);
     Wire.endTransmission(false); //By putting false here, we essentially tell the wire that were not yet done using the I2C connection to the device
@@ -68,7 +69,7 @@ byte readByte(byte address){
     return returnByte;
 }
 
-uint16_t readHalfWord(byte address){
+uint16_t i2cSensor::readHalfWord(byte address){
   Wire.beginTransmission(MPU_ADDR);
   Wire.write(address);
   Wire.endTransmission(false); //By putting false here, we essentially tell the wire that were not yet done using the I2C connection to the device
@@ -84,7 +85,7 @@ uint16_t readHalfWord(byte address){
   return returnHalfWord;
 }
 
-uint32_t readWord(byte address){
+uint32_t i2cSensor::readWord(byte address){
   Wire.beginTransmission(MPU_ADDR);
   Wire.write(address);
   Wire.endTransmission(false); //By putting false here, we essentially tell the wire that were not yet done using the I2C connection to the device
