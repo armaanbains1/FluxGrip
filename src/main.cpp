@@ -6,10 +6,13 @@
 #include <iostream>
 #include <iomanip> // Required for hex, setw, and setfill
 #include <cstdint>
+std::vector<float> accelometerVals;
+std::vector<float> gyroVals;
 
 using namespace std;
 i2cSensor MPU6050;
 
+char mode = 'g';
 void printWord(uint32_t val){
   
   std::cout << "0x" 
@@ -24,12 +27,23 @@ void printWord(uint32_t val){
 void setup() {
   Wire.begin();
   Serial.begin(115200);
+  if (mode == 'g'){
+    MPU6050.configureGyroscope();
+  }
+  if (mode == 'a'){
+      MPU6050.configureAccelerator();
+  }
 }
 
 void loop() {
-  MPU6050.powerUp();
-  u_int32_t accelometerTest = MPU6050.readHalfWord(0x3B);
-  cout << accelometerTest << endl;
-  printWord(accelometerTest);
+  
+  if (mode == 'a'){
+    accelometerVals = MPU6050.accelometerXYZ();
+  }
+  else{
+    gyroVals = MPU6050.galvoXYZ();
+  }
+
+  delay(1000);
 }
 

@@ -38,7 +38,7 @@ byte i2cSensor::deviceFinder(){
   }
 }
 
-void i2cSensor::powerUp(){
+void i2cSensor::configureAccelerator(){
     // ----- MPU6050 Initialization -----
   Wire.beginTransmission(MPU_ADDR);
   Wire.write(0x6B);           // PWR_MGMT_1 register
@@ -59,6 +59,23 @@ void i2cSensor::powerUp(){
 
   Serial.println("MPU6050 Initialized for Raw Accelerometer Readings");
 }
+
+void i2cSensor::configureGyroscope(){
+    // ----- MPU6050 Initialization -----
+  Wire.beginTransmission(MPU_ADDR);
+  Wire.write(0x6B);     // Wake up sensor
+  Wire.write(0x00);
+  Wire.endTransmission(true);
+
+  // Configure gyroscope range to ±250 °/s
+  Wire.beginTransmission(MPU_ADDR);
+  Wire.write(0x1B);     // GYRO_CONFIG register
+  Wire.write(0x00);     // ±250dps
+  Wire.endTransmission(true);
+
+  Serial.println("MPU6050 Initialized for Raw Gyroscope Readings");
+}
+
 
 byte i2cSensor::readByte(byte address){
     Wire.beginTransmission(MPU_ADDR);
@@ -98,4 +115,58 @@ uint32_t i2cSensor::readWord(byte address){
   }
   
   return returnWord;
+}
+
+std::vector<float> i2cSensor::accelometerXYZ(){
+  int16_t rawAccX, rawAccY, rawAccZ;
+  float AccX, AccY, AccZ;
+
+  Wire.beginTransmission(MPU_ADDR);
+  Wire.write(0x3B);
+  Wire.endTransmission(false);
+  Wire.requestFrom(MPU_ADDR, 6);
+
+  // Read raw data (16-bit signed)
+  rawAccX = (Wire.read() << 8) | Wire.read();
+  rawAccY = (Wire.read() << 8) | Wire.read();
+  rawAccZ = (Wire.read() << 8) | Wire.read();
+
+  AccX = rawAccX / 16384.0;
+  AccY = rawAccY / 16384.0;
+  AccZ = rawAccZ / 16384.0;
+
+  Serial.print("AccX: "); Serial.print(AccX);
+  Serial.print(" | AccY: "); Serial.print(AccY);
+  Serial.print(" | AccZ: "); Serial.println(AccZ);
+
+  std::vector<float> accelometerValues = {AccX, AccY, AccZ};
+
+  return accelometerValues;
+}
+
+std::vector<float> i2cSensor::galvoXYZ(){
+  int16_t rawGyroX, rawGyroY, rawGyroZ;
+  float GyroX, GyroY, GyroZ;
+
+  // Request gyroscope registers starting from 0x43
+  Wire.beginTransmission(MPU_ADDR);
+  Wire.write(0x43);
+  Wire.endTransmission(false);
+  Wire.requestFrom(MPU_ADDR, 6, true);
+
+  rawGyroX = (Wire.read() << 8) | Wire.read();
+  rawGyroY = (Wire.read() << 8) | Wire.read();
+  rawGyroZ = (Wire.read() << 8) | Wire.read();
+
+  GyroX = rawGyroX / 131.0;
+  GyroY = rawGyroY / 131.0;
+  GyroZ = rawGyroZ / 131.0;
+  
+  Serial.print("GyroX: "); Serial.print(GyroX);
+  Serial.print(" | GyroY: "); Serial.print(GyroY);
+  Serial.print(" | GyroZ: "); Serial.println(GyroZ);
+
+  std::vector<float> gyroValues = {GyroX, GyroY, GyroZ};
+
+  return gyroValues;
 }

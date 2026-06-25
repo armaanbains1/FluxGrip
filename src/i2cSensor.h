@@ -9,10 +9,12 @@ class i2cSensor{
 
     public:
         byte deviceFinder();
-        void powerUp();
+        void configureAccelerator();
         byte readByte(byte address);
         uint16_t readHalfWord(byte address);
         uint32_t readWord(byte address);
-        
+        std::vector<float> accelometerXYZ();
+        void configureGyroscope();
+        std::vector<float> galvoXYZ();
 };
 
