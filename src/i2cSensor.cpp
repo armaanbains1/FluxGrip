@@ -2,6 +2,7 @@
 #include <Wire.h>
 #include <iostream>
 #include <vector> // 
+#define MPU_ADDR 0x68
 
 byte deviceFinder(){
   byte error, address;
@@ -36,12 +37,64 @@ byte deviceFinder(){
   }
 }
 
-byte readByte(int address){
-    Wire.requestFrom(address, 1);
-    return Wire.read();
+void powerUp(){
+    // ----- MPU6050 Initialization -----
+  Wire.beginTransmission(MPU_ADDR);
+  Wire.write(0x6B);           // PWR_MGMT_1 register
+  Wire.write(0x00);           // Wake up MPU6050 (set sleep = 0)
+  Wire.endTransmission(true);
+
+  // Set accelerometer range to ±2g (most stable)
+  Wire.beginTransmission(MPU_ADDR);
+  Wire.write(0x1C);           // ACCEL_CONFIG register
+  Wire.write(0x00);           // ±2g range
+  Wire.endTransmission(true);
+
+  // Set sample rate (optional)
+  Wire.beginTransmission(MPU_ADDR);
+  Wire.write(0x19);           // SMPLRT_DIV register
+  Wire.write(0x07);           // Sample rate = 1kHz / (7+1) = 125Hz
+  Wire.endTransmission(true);
+
+  Serial.println("MPU6050 Initialized for Raw Accelerometer Readings");
 }
 
-std::vector<byte> readBytes(int address, int numBytes){
-    Wire.requestFrom(address, numBytes);
-    std::vectpr
+byte readByte(byte address){
+    Wire.beginTransmission(MPU_ADDR);
+    Wire.write(address);
+    Wire.endTransmission(false); //By putting false here, we essentially tell the wire that were not yet done using the I2C connection to the device
+    Wire.requestFrom(MPU_ADDR, 1);
+    byte returnByte = Wire.read();
+    return returnByte;
+}
+
+uint16_t readHalfWord(byte address){
+  Wire.beginTransmission(MPU_ADDR);
+  Wire.write(address);
+  Wire.endTransmission(false); //By putting false here, we essentially tell the wire that were not yet done using the I2C connection to the device
+  Wire.requestFrom(MPU_ADDR, 2);
+  uint16_t returnHalfWord = 0;
+
+  for (int i = 0; i <= 3; i+=1){
+    uint8_t read = Wire.read();
+    returnHalfWord <<= 8;
+    returnHalfWord |= read;
+  }
+  
+  return returnHalfWord;
+}
+
+uint32_t readWord(byte address){
+  Wire.beginTransmission(MPU_ADDR);
+  Wire.write(address);
+  Wire.endTransmission(false); //By putting false here, we essentially tell the wire that were not yet done using the I2C connection to the device
+  Wire.requestFrom(MPU_ADDR, 4);
+  uint32_t returnWord = 0;
+  for (int i = 0; i <= 3; i+=1){
+    uint8_t read = Wire.read();
+    returnWord <<= 8;
+    returnWord |= read;
+  }
+  
+  return returnWord;
 }
