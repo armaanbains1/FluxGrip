@@ -3,15 +3,19 @@
 #include <iostream>
 #include <vector> // 
 #include "i2cSensor.h"
+#include "kinematicsEngine.h"
+
 #include <iostream>
 #include <iomanip> // Required for hex, setw, and setfill
 #include <cstdint>
 std::vector<float> accelometerVals;
 std::vector<float> gyroVals;
-
+uint32_t lastClockTime = 0;
 using namespace std;
 i2cSensor MPU6050;
-
+kinematicsEngine kinEngine;
+Quaternion qiNew; 
+Quaternion qiPrev;
 char mode = 'g';
 void printWord(uint32_t val){
   
@@ -25,25 +29,35 @@ void printWord(uint32_t val){
 }
 
 void setup() {
+
   Wire.begin();
   Serial.begin(115200);
-  if (mode == 'g'){
-    MPU6050.configureGyroscope();
-  }
-  if (mode == 'a'){
-      MPU6050.configureAccelerator();
-  }
+  MPU6050.configureAccelerator();
+  accelometerVals = MPU6050.accelometerXYZ();
+  MPU6050.configureGyroscope();
+  std::tuple<float, float, float> intitialAngles = kinEngine.initialAngleCalculator(accelometerVals[0], accelometerVals[1], accelometerVals[2]);
+  cout << "x " << std::get<0>(intitialAngles) << endl;
+  cout << "y " << std::get<1>(intitialAngles) << endl;
+  cout << "z" << std::get<2>(intitialAngles) << endl;
+  qiPrev = kinEngine.quaternionCalculator(intitialAngles);
+  gyroVals = MPU6050.galvoXYZ();
+  Quaternion initialQw = {0, gyroVals[0], gyroVals[1], gyroVals[2]};
+  qiNew = kinEngine.GyroQuaternionUpdater(qiPrev, initialQw, 0.00000001);
+  lastClockTime = micros();
+  
 }
 
-void loop() {
-  
-  if (mode == 'a'){
-    accelometerVals = MPU6050.accelometerXYZ();
-  }
-  else{
-    gyroVals = MPU6050.galvoXYZ();
-  }
 
+
+void loop() {
+  uint32_t currentClockTime = micros();
+  uint32_t clockTicksDT = currentClockTime - lastClockTime;
+  lastClockTime = currentClockTime;
+  float dt = static_cast<float>(clockTicksDT) / 1000000.0f;
+  gyroVals = MPU6050.galvoXYZ();
+  Quaternion newQw = {0, gyroVals[0], gyroVals[1], gyroVals[2]};
+  qiPrev = qiNew;
+  qiNew = kinEngine.GyroQuaternionUpdater(qiPrev, newQw, dt);
   delay(1000);
 }
 
