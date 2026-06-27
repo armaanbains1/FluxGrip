@@ -9,6 +9,9 @@
 #include <iomanip> // Required for hex, setw, and setfill
 #include <cstdint>
 std::vector<float> accelometerVals;
+std::vector<float> adjustedAccelometerVals;
+Quaternion qAdjustedAccelometerVals;
+
 std::vector<float> gyroVals;
 uint32_t lastClockTime = 0;
 using namespace std;
@@ -58,6 +61,12 @@ void loop() {
   Quaternion newQw = {0, gyroVals[0], gyroVals[1], gyroVals[2]};
   qiPrev = qiNew;
   qiNew = kinEngine.GyroQuaternionUpdater(qiPrev, newQw, dt);
+  Quaternion qAccelometerVals = {0, accelometerVals[0], accelometerVals[1], accelometerVals[2]};
+  qAdjustedAccelometerVals = kinEngine.quaternionLocalToGlobal(qiNew, qAccelometerVals);
+  adjustedAccelometerVals = {qAdjustedAccelometerVals.qx, qAdjustedAccelometerVals.qy, qAdjustedAccelometerVals.qz};
+  cout << "X: " << adjustedAccelometerVals[0] << "    Y:  " << adjustedAccelometerVals[1] << "    Z:" << adjustedAccelometerVals[2];
+  accelometerVals = MPU6050.accelometerXYZ();
+
   delay(1000);
 }
 
