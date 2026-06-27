@@ -6,9 +6,9 @@ using namespace std;
 
 std::tuple<float, float, float> kinematicsEngine::initialAngleCalculator(float ax, float ay, float az){
     float a = std::sqrt((ax * ax) + (ay * ay) + (az * az));    
-    float alpha = std::acos(ax/a);
-    float beta = std::acos(ay/a);
-    float gamma = std::acos(az/a);
+    float alpha = atan(ay/az);
+    float beta = asin(a/9.81);
+    float gamma = 0;
     std::tuple<float, float, float> angleTuple = {alpha, beta, gamma};
     return angleTuple;
 }
