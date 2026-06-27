@@ -21,7 +21,7 @@ class kinematicsEngine{
     public:
         std::tuple<float, float, float> initialAngleCalculator(float ax, float ay, float az);
         Quaternion quaternionCalculator(std::tuple<float, float, float> angles);
-        Quaternion kinematicsEngine::GyroQuaternionUpdater(Quaternion qi, Quaternion qw, int dt);
+        Quaternion GyroQuaternionUpdater(Quaternion qi, Quaternion qw, int dt);
         Quaternion quarternionMultiply(Quaternion q1, Quaternion q2);
         Quaternion quarternionConstantMultiply(Quaternion q1, float c);
         Quaternion quarternionAddition(Quaternion q1, Quaternion q2);
