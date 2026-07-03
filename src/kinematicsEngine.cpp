@@ -1,13 +1,14 @@
 #include "kinematicsEngine.h"
 #include <tuple>
 #include <cmath>
+#include <vector>
 using namespace std;
 
 
 std::tuple<float, float, float> kinematicsEngine::initialAngleCalculator(float ax, float ay, float az){
     float a = std::sqrt((ax * ax) + (ay * ay) + (az * az));    
     float alpha = atan(ay/az);
-    float beta = asin(a/9.81);
+    float beta = std::asin(ax / a);
     float gamma = 0;
     std::tuple<float, float, float> angleTuple = {alpha, beta, gamma};
     return angleTuple;
@@ -52,8 +53,7 @@ Quaternion kinematicsEngine::normalizer(Quaternion q) {
     return q;
 }
 
-Quaternion kinematicsEngine::GyroQuaternionUpdater(Quaternion qi, Quaternion qw, int dt){
-    //qi + 1 = qi + qwqi*dt/2
+Quaternion kinematicsEngine::GyroQuaternionUpdater(Quaternion qi, Quaternion qw, float dt){    //qi + 1 = qi + qwqi*dt/2
     Quaternion qiNew = quarternionAddition(qi, quarternionConstantMultiply(quarternionMultiply(qw, qi),(dt/2)));
     qiNew = normalizer(qiNew);
     return qiNew;
@@ -125,10 +125,10 @@ Quaternion kinematicsEngine::quarternionConstantSubtraction(Quaternion q1, float
 
 Quaternion kinematicsEngine::quaternionLocalToGlobal(Quaternion q1, Quaternion A) {
     Quaternion q1_conjugate;
-    q1_conjugate.qw = q1.qw;
-    q1_conjugate.qw = -q1.qw;
-    q1_conjugate.qw = -q1.qw;
-    q1_conjugate.qw = -q1.qw;
+    q1_conjugate.qw =  q1.qw;
+    q1_conjugate.qx = -q1.qx; 
+    q1_conjugate.qy = -q1.qy; 
+    q1_conjugate.qz = -q1.qz;
 
 
     Quaternion intermediate = quarternionMultiply(q1, A);
@@ -136,4 +136,45 @@ Quaternion kinematicsEngine::quaternionLocalToGlobal(Quaternion q1, Quaternion A
     Quaternion global_vector = quarternionMultiply(intermediate, q1_conjugate);
 
     return global_vector;
+}
+
+Quaternion kinematicsEngine::quaternionGlobalToLocal(Quaternion q1, Quaternion A) {
+    // 1. Properly calculate the conjugate of q1
+    Quaternion q1_conjugate;
+    q1_conjugate.qw =  q1.qw;
+    q1_conjugate.qx = -q1.qx; // Fixed: was overwriting qw
+    q1_conjugate.qy = -q1.qy; // Fixed: was overwriting qw
+    q1_conjugate.qz = -q1.qz; // Fixed: was overwriting qw
+
+    // 2. Multiply conjugate first: intermediate = q1_conjugate * A
+    Quaternion intermediate = quarternionMultiply(q1_conjugate, A);
+
+    // 3. Multiply by the original quaternion: local_vector = intermediate * q1
+    Quaternion local_vector = quarternionMultiply(intermediate, q1);
+
+    return local_vector;
+}
+
+std::vector<float> kinematicsEngine::vectorCrossProduct(std::vector<float> a, std::vector<float> v) {
+    std::vector<float> error(3);
+
+    // Calculate magnitudes
+    float magA = std::sqrt(a[0]*a[0] + a[1]*a[1] + a[2]*a[2]);
+    float magV = std::sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+
+    // Avoid division by zero if a sensor glitches
+    if (magA < 0.000001f || magV < 0.000001f) {
+        return {0.0f, 0.0f, 0.0f};
+    }
+
+    // Create unit vectors
+    float ax = a[0] / magA, ay = a[1] / magA, az = a[2] / magA;
+    float vx = v[0] / magV, vy = v[1] / magV, vz = v[2] / magV;
+
+    // Cross product with normalized values
+    error[0] = (ay * vz) - (az * vy);
+    error[1] = (az * vx) - (ax * vz);
+    error[2] = (ax * vy) - (ay * vx);
+
+    return error;
 }

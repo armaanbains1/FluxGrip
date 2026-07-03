@@ -1,4 +1,6 @@
 #include <tuple>
+#include <vector>
+
 struct Quaternion{
     float qw = 1.0f; 
     float qx = 0.0f; 
@@ -21,7 +23,7 @@ class kinematicsEngine{
     public:
         std::tuple<float, float, float> initialAngleCalculator(float ax, float ay, float az);
         Quaternion quaternionCalculator(std::tuple<float, float, float> angles);
-        Quaternion GyroQuaternionUpdater(Quaternion qi, Quaternion qw, int dt);
+        Quaternion GyroQuaternionUpdater(Quaternion qi, Quaternion qw, float dt);
         Quaternion quarternionMultiply(Quaternion q1, Quaternion q2);
         Quaternion quarternionConstantMultiply(Quaternion q1, float c);
         Quaternion quarternionAddition(Quaternion q1, Quaternion q2);
@@ -30,8 +32,8 @@ class kinematicsEngine{
         Quaternion quarternionConstantSubtraction(Quaternion q1, float c);
         Quaternion normalizer(Quaternion q);
         Quaternion quaternionLocalToGlobal(Quaternion q1, Quaternion A);
-
-
+        Quaternion quaternionGlobalToLocal(Quaternion q1, Quaternion A);
+        std::vector<float> vectorCrossProduct(std::vector<float> a, std::vector<float> v);
 
 
 };

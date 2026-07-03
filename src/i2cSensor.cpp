@@ -57,7 +57,7 @@ void i2cSensor::configureAccelerator(){
   Wire.write(0x07);           // Sample rate = 1kHz / (7+1) = 125Hz
   Wire.endTransmission(true);
 
-  Serial.println("MPU6050 Initialized for Raw Accelerometer Readings");
+  //Serial.println("MPU6050 Initialized for Raw Accelerometer Readings");
 }
 
 void i2cSensor::configureGyroscope(){
@@ -73,7 +73,7 @@ void i2cSensor::configureGyroscope(){
   Wire.write(0x00);     // ±250dps
   Wire.endTransmission(true);
 
-  Serial.println("MPU6050 Initialized for Raw Gyroscope Readings");
+  //Serial.println("MPU6050 Initialized for Raw Gyroscope Readings");
 }
 
 
@@ -126,18 +126,22 @@ std::vector<float> i2cSensor::accelometerXYZ(){
   Wire.endTransmission(false);
   Wire.requestFrom(MPU_ADDR, 6);
 
-  // Read raw data (16-bit signed)
-  rawAccX = (Wire.read() << 8) | Wire.read();
-  rawAccY = (Wire.read() << 8) | Wire.read();
-  rawAccZ = (Wire.read() << 8) | Wire.read();
+  uint8_t hx = Wire.read(); uint8_t lx = Wire.read();
+  rawAccX = (hx << 8) | lx;
+
+  uint8_t hy = Wire.read(); uint8_t ly = Wire.read();
+  rawAccY = (hy << 8) | ly;
+
+  uint8_t hz = Wire.read(); uint8_t lz = Wire.read();
+  rawAccZ = (hz << 8) | lz;
 
   AccX = rawAccX / 16384.0;
   AccY = rawAccY / 16384.0;
   AccZ = rawAccZ / 16384.0;
 
-  Serial.print("AccX: "); Serial.print(AccX);
-  Serial.print(" | AccY: "); Serial.print(AccY);
-  Serial.print(" | AccZ: "); Serial.println(AccZ);
+  //Serial.print("AccX: "); Serial.print(AccX);
+  //Serial.print(" | AccY: "); Serial.print(AccY);
+  //Serial.print(" | AccZ: "); Serial.println(AccZ);
 
   std::vector<float> accelometerValues = {AccX, AccY, AccZ};
 
@@ -154,17 +158,25 @@ std::vector<float> i2cSensor::galvoXYZ(){
   Wire.endTransmission(false);
   Wire.requestFrom(MPU_ADDR, 6, true);
 
-  rawGyroX = (Wire.read() << 8) | Wire.read();
-  rawGyroY = (Wire.read() << 8) | Wire.read();
-  rawGyroZ = (Wire.read() << 8) | Wire.read();
+  uint8_t hx = Wire.read();
+  uint8_t lx = Wire.read();
+  rawGyroX = (hx << 8) | lx;
+
+  uint8_t hy = Wire.read();
+  uint8_t ly = Wire.read();
+  rawGyroY = (hy << 8) | ly;
+
+  uint8_t hz = Wire.read();
+  uint8_t lz = Wire.read();
+  rawGyroZ = (hz << 8) | lz;
 
   GyroX = rawGyroX / 131.0;
   GyroY = rawGyroY / 131.0;
   GyroZ = rawGyroZ / 131.0;
   
-  Serial.print("GyroX: "); Serial.print(GyroX);
-  Serial.print(" | GyroY: "); Serial.print(GyroY);
-  Serial.print(" | GyroZ: "); Serial.println(GyroZ);
+  //Serial.print("GyroX: "); Serial.print(GyroX);
+  //Serial.print(" | GyroY: "); Serial.print(GyroY);
+  //Serial.print(" | GyroZ: "); Serial.println(GyroZ);
 
   std::vector<float> gyroValues = {GyroX, GyroY, GyroZ};
 
