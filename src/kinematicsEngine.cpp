@@ -178,3 +178,20 @@ std::vector<float> kinematicsEngine::vectorCrossProduct(std::vector<float> a, st
 
     return error;
 }
+
+
+float kinematicsEngine::getSensorPercentDifference(float a, float b) {
+    // 1. Calculate the absolute difference between the two points
+    float absoluteDiff = std::abs(a - b);
+    
+    // 2. Use the average of their magnitudes to prevent zero-crossing issues
+    float averageMagnitude = (std::abs(a) + std::abs(b)) / 2.0f;
+    
+    // 3. Catch the case where both sensors are reading exactly 0.0
+    if (averageMagnitude == 0.0f) {
+        return 0.0f;
+    }
+    
+    // 4. Return the percentage difference
+    return (absoluteDiff / averageMagnitude) * 100.0f;
+}

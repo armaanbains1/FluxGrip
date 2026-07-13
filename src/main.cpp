@@ -11,8 +11,16 @@
 #include <cstdint>
 std::vector<float> accelometerVals;
 std::vector<float> accelometerValsN;
-
+float accelometerAverageX = 0;
+float accelometerAverageY = 0;
+float accelometerAverageZ = 0;
+float prevAccelometerAverageX = 0;
+float prevAccelometerAverageY = 0;
+float prevAccelometerAverageZ = 0;
+float accelometerCount = 0;
 std::vector<float> adjustedAccelometerVals;
+std::vector<std::vector<float>> rawAccelometerStream;
+
 Quaternion qAdjustedAccelometerVals;
 std::vector<float> adjustedGravityVals;
 std::vector<float> velocity = {0,0,0};
@@ -26,11 +34,15 @@ std::vector<float> gyroValsI = {0,0,0};
 std::vector<float> error;
 
 std::vector<float> accolometerTracker {};
+std::vector<float> movementTrackerForWorkEngine {0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1};
+int movementCounter = 0;
 int sampleCount = 0;
 float sampleAveragePrev = 0;
 float sampleAverageCurr = 0;
-float Kp = 0.1;
-float Ki = 0.005;
+float Kp = 0.35;
+float Ki = 0.05;
+
+bool enableHighPass = false;
 
 uint32_t lastClockTime = 0;
 using namespace std;
@@ -53,6 +65,10 @@ float accValsZOffset = 0;
 
 bool sampleClock = false;
 
+bool moving = false;
+bool paused = true;
+int halfRep;
+int rep;
 
 void printWord(uint32_t val){
   std::cout << "0x" 
@@ -194,7 +210,25 @@ for (int i = 0; i < 10; i++){
 
     delay(5);
   }
+
+  for (int i = 0; i<= 99; i++){
+    std::vector<float> accelometerValsN = accelometerVals;
+    float accelNorm = sqrt(accelometerVals[0] * accelometerVals[0] + 
+                          accelometerVals[1] * accelometerVals[1] + 
+                          accelometerVals[2] * accelometerVals[2]);
+
+    if (accelNorm > 0.000001f) {
+      accelometerValsN[0] /= accelNorm;
+      accelometerValsN[1] /= accelNorm;
+      accelometerValsN[2] /= accelNorm;
+    }
+    rawAccelometerStream.push_back(accelometerValsN);
+
+  }
+
+  accelometerCount = 0;
   sampleAveragePrev = workEngine.calculateSampleAverage(accolometerTracker);
+  cout << "the size is " << rawAccelometerStream.size() << endl;
 
 }
 
@@ -202,33 +236,59 @@ for (int i = 0; i < 10; i++){
 
 void loop() {
   // 1. Keep track of timing
+  // 1. Enforce the 5000 microsecond (5ms) rate limit
+  uint32_t currentClockTime = micros();
+  uint32_t clockTicksDT = currentClockTime - lastClockTime;
+
+  // If 5ms have NOT passed yet, stop right here and exit the loop immediately
+  if (clockTicksDT < 5000) {
+    return; 
+  }
+  
+  // If we get past the 'return', it means exactly 5ms (or slightly more) have passed!
+  lastClockTime = currentClockTime; // Save the time for the next check
+
+  float dt = static_cast<float>(clockTicksDT) / 1000000.0f;
+  accolometerTracker.push_back(adjustedAccelometerVals[2]-1);
   sampleCount+= 1;
   if (sampleCount == 10){
     sampleAverageCurr = workEngine.calculateSampleAverage(accolometerTracker);
     
-    if (sampleAverageCurr > -0.4){
+    if (sampleAverageCurr > -0.1 && sampleAverageCurr < 0.1){
       sampleAverageCurr = 0;
     }
-
+    accolometerTracker.clear();
     
     cout << sampleAverageCurr << endl;
+
+
+    movementTrackerForWorkEngine.erase(movementTrackerForWorkEngine.begin());
+    movementTrackerForWorkEngine.push_back(sampleAverageCurr);
+    
+    //cout << movementCounter << endl;
+    //cout << movementTrackerForWorkEngine.size()<< endl;
+    for (auto &i: movementTrackerForWorkEngine){
+      //cout << " " << i << " ";
+    }
+    //cout << "new" << endl;
+    movementCounter += 1;
     if (workEngine.sampleSignChange(sampleAveragePrev, sampleAverageCurr)){
-      cout << "changed" << endl;
+      //cout << "changed" << endl;
     }
     sampleAveragePrev = sampleAverageCurr;
     sampleCount = 0;
   }
-  
-  uint32_t currentClockTime = micros();
-  uint32_t clockTicksDT = currentClockTime - lastClockTime;
-  lastClockTime = currentClockTime;
-  float dt = static_cast<float>(clockTicksDT) / 1000000.0f;
+
 
   // 2. Read latest sensor data
   gyroVals = MPU6050.galvoXYZ();
   gyroVals[0] = (gyroVals[0] - gyroValsXOffset) * DEG_TO_RAD;
   gyroVals[1] = (gyroVals[1] - gyroValsYOffset) * DEG_TO_RAD;
   gyroVals[2] = (gyroVals[2] - gyroValsZOffset) * DEG_TO_RAD;
+
+  if (enableHighPass){
+    gyroVals = {0,0,0};
+  }
 
   accelometerVals = MPU6050.accelometerXYZ();
   accelometerVals[0] = (accelometerVals[0] - accValsXOffset);
@@ -245,6 +305,50 @@ void loop() {
     accelometerValsN[1] /= accelNorm;
     accelometerValsN[2] /= accelNorm;
   }
+
+  //implementing the zero-velocty update high pass gyro filter
+  //goal here is to essentially check the accelometer for a stable point
+  //once we get to a stable acceleration, we then go directly to the gyro values, and then, calibrate them, creating a continuous calibration which goes on indefintely
+
+  rawAccelometerStream.push_back(accelometerValsN);
+  accelometerCount ++;
+  if (accelometerCount == 15){
+    float sumX = 0;
+    float sumY = 0;
+    float sumZ = 0;
+
+    for (auto & i: rawAccelometerStream){
+//     cout << sumX << endl;;
+//     cout << sumY << endl;;
+//      cout << sumZ << endl;;
+
+      sumX += i[0];
+      sumY += i[1];
+      sumZ += i[2];
+    }
+    prevAccelometerAverageX = accelometerAverageX;
+    prevAccelometerAverageY = accelometerAverageY;
+    prevAccelometerAverageZ = accelometerAverageZ;
+
+    accelometerAverageX = sumX / 15.0;
+    accelometerAverageY = sumY / 15.0;
+    accelometerAverageZ = sumZ / 15.0;
+   // cout << "x: " << accelometerAverageX  << "y " << accelometerAverageY << "z " << accelometerAverageZ << endl;
+    accelometerCount = 0;
+    
+    rawAccelometerStream.clear();
+    if (kinEngine.getSensorPercentDifference(accelometerAverageX, prevAccelometerAverageX) < 5.30 && kinEngine.getSensorPercentDifference(accelometerAverageY, prevAccelometerAverageY) < 4.10 && kinEngine.getSensorPercentDifference(accelometerAverageZ, prevAccelometerAverageZ) < 0.30){
+        //cout << "not moving" << endl;
+        enableHighPass = true;
+
+    }
+    else{
+      //cout << "moving" << endl;
+      enableHighPass = false;
+    }
+    
+  }
+
 
   // 3. Compute error vector using CURRENT attitude state (qiNew)
   qGravityVals = kinEngine.quaternionGlobalToLocal(qiNew, {0, 0, 0, 1}); // Global gravity is [0, 0, 1]
@@ -272,14 +376,30 @@ void loop() {
   // 6. Optional: Project raw acceleration into the global frame if needed
   Quaternion qAccelometerVals = {0, accelometerVals[0], accelometerVals[1], accelometerVals[2]};
   qAdjustedAccelometerVals = kinEngine.quaternionLocalToGlobal(qiNew, qAccelometerVals);
-  adjustedAccelometerVals = {qAdjustedAccelometerVals.qx, qAdjustedAccelometerVals.qy, qAdjustedAccelometerVals.qz - 1};
+  adjustedAccelometerVals = {qAdjustedAccelometerVals.qx, qAdjustedAccelometerVals.qy, qAdjustedAccelometerVals.qz};
 
-  //cout << "X: " << adjustedAccelometerVals[0] << "    Y:  " << adjustedAccelometerVals[1] << "    Z:" << adjustedAccelometerVals[2] << endl;
-  //cout << "    Z:" << adjustedAccelometerVals[2] * 100;
+  //cout << "X: " << adjustedAccelometerVals[0] << "    Y:  " << adjustedAccelometerVals[1] << "    Z:" << adjustedAccelometerVals[2]+1 << endl;
+  ////cout << "    Z:" << adjustedAccelometerVals[2] * 100;
+  //cout << "X: " << correctedGyroX << "    Y:  " << correctedGyroY << "    Z:" << correctedGyroZ << endl;
 
-  accolometerTracker.erase(accolometerTracker.begin());
-  accolometerTracker.push_back(adjustedAccelometerVals[2] * 100);
 
-  delay(5);
+  if (workEngine.checkForPaused(movementTrackerForWorkEngine)){
+    if (moving == true){
+      halfRep++;
+      rep = halfRep / 2;
+      cout << "rep count = " << rep << endl; 
+    }
+    moving = false;
+    paused = true;
+  }
+  else{
+    moving = true;
+    paused = false;
+  }
+
+
+
+
+
 }
 

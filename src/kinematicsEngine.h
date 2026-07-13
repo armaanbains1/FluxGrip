@@ -34,6 +34,7 @@ class kinematicsEngine{
         Quaternion quaternionLocalToGlobal(Quaternion q1, Quaternion A);
         Quaternion quaternionGlobalToLocal(Quaternion q1, Quaternion A);
         std::vector<float> vectorCrossProduct(std::vector<float> a, std::vector<float> v);
+        float getSensorPercentDifference(float a, float b);
 
 
 };
