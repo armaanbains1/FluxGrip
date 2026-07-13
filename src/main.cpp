@@ -20,6 +20,11 @@ float prevAccelometerAverageZ = 0;
 float accelometerCount = 0;
 std::vector<float> adjustedAccelometerVals;
 std::vector<std::vector<float>> rawAccelometerStream;
+std::vector<int> sets;
+std::vector<int> currentSet;
+
+uint32_t halfrepTimerStart;
+uint32_t halfrepTime;
 
 Quaternion qAdjustedAccelometerVals;
 std::vector<float> adjustedGravityVals;
@@ -69,6 +74,10 @@ bool moving = false;
 bool paused = true;
 int halfRep;
 int rep;
+int set;
+int pauseCount = 0;
+bool inSet = false;
+bool inRep = false;
 
 void printWord(uint32_t val){
   std::cout << "0x" 
@@ -254,7 +263,8 @@ void loop() {
   if (sampleCount == 10){
     sampleAverageCurr = workEngine.calculateSampleAverage(accolometerTracker);
     
-    if (sampleAverageCurr > -0.1 && sampleAverageCurr < 0.1){
+
+    if (sampleAverageCurr > -0.2 && sampleAverageCurr < 0.2 ){
       sampleAverageCurr = 0;
     }
     accolometerTracker.clear();
@@ -286,9 +296,7 @@ void loop() {
   gyroVals[1] = (gyroVals[1] - gyroValsYOffset) * DEG_TO_RAD;
   gyroVals[2] = (gyroVals[2] - gyroValsZOffset) * DEG_TO_RAD;
 
-  if (enableHighPass){
-    gyroVals = {0,0,0};
-  }
+
 
   accelometerVals = MPU6050.accelometerXYZ();
   accelometerVals[0] = (accelometerVals[0] - accValsXOffset);
@@ -337,7 +345,7 @@ void loop() {
     accelometerCount = 0;
     
     rawAccelometerStream.clear();
-    if (kinEngine.getSensorPercentDifference(accelometerAverageX, prevAccelometerAverageX) < 5.30 && kinEngine.getSensorPercentDifference(accelometerAverageY, prevAccelometerAverageY) < 4.10 && kinEngine.getSensorPercentDifference(accelometerAverageZ, prevAccelometerAverageZ) < 0.30){
+    if (kinEngine.getSensorPercentDifference(accelometerAverageX, prevAccelometerAverageX) < 5.30 && kinEngine.getSensorPercentDifference(accelometerAverageY, prevAccelometerAverageY) < 4.10 && kinEngine.getSensorPercentDifference(accelometerAverageZ, prevAccelometerAverageZ) < 4.0){
         //cout << "not moving" << endl;
         enableHighPass = true;
 
@@ -357,15 +365,25 @@ void loop() {
   // Make sure both vectors are normalized before cross product!
   error = kinEngine.vectorCrossProduct(accelometerValsN, adjustedGravityVals);
 
-  // 4. NOW it is safe to compute the Integral and Proportional corrections
-  gyroValsI[0] += error[0] * Ki * dt;
-  gyroValsI[1] += error[1] * Ki * dt;
-  gyroValsI[2] += error[2] * Ki * dt;
+
+  // 4. Handle corrections based on high-pass state
+  if (enableHighPass) {
+    // Clear and freeze the integral vector so noise can't compound
+    gyroVals = {0.0f, 0.0f, 0.0f}; 
+    gyroValsI = {0.0f, 0.0f, 0.0f}; 
+  } else {
+    // Only integrate gravity/motion errors when actively moving
+    gyroValsI[0] += error[0] * Ki * dt;
+    gyroValsI[1] += error[1] * Ki * dt;
+    gyroValsI[2] += error[2] * Ki * dt;
+  }
+
+  // ALWAYS keep Kp alive to keep your orientation quaternion anchored to gravity
+  Kp = 0.35f; 
 
   float correctedGyroX = gyroVals[0] + (Kp * error[0]) + gyroValsI[0];
   float correctedGyroY = gyroVals[1] + (Kp * error[1]) + gyroValsI[1];
   float correctedGyroZ = gyroVals[2] + (Kp * error[2]) + gyroValsI[2];
-
   //cout << "X: " << correctedGyroX << "    Y:  " << correctedGyroY << "    Z:" << correctedGyroZ << endl;
 
   // 5. Update the orientation quaternion using the freshly corrected values
@@ -382,20 +400,59 @@ void loop() {
   ////cout << "    Z:" << adjustedAccelometerVals[2] * 100;
   //cout << "X: " << correctedGyroX << "    Y:  " << correctedGyroY << "    Z:" << correctedGyroZ << endl;
 
+  //cout << pauseCount << endl;
+
 
   if (workEngine.checkForPaused(movementTrackerForWorkEngine)){
+    if (pauseCount >= 2000 && inSet){
+      inSet = false;
+      set++;
+      //Serial.print("Set #: ");
+      //Serial.print(set);
+      //Serial.println(" done");
+      
+      sets.push_back(rep);
+      rep = 0;
+      halfRep=0;
+    }
+    
     if (moving == true){
+      
       halfRep++;
       rep = halfRep / 2;
-      cout << "rep count = " << rep << endl; 
+      if (inRep == true){
+        halfrepTime = millis() - halfrepTimerStart;
+        Serial.print("Phase Duration: ");
+        Serial.print(halfrepTime);
+        Serial.println(" ms");
+        inRep = false;
+      }
+      //Serial.print("rep count = ");
+      //Serial.println(rep);
     }
     moving = false;
     paused = true;
+    if (pauseCount < 2000){
+      pauseCount++;
+    }
+
+    //Serial.println(pauseCount);
+    
   }
   else{
+    if (inRep == false){
+      halfrepTimerStart = millis();
+      inRep = true;
+    }
+    
     moving = true;
     paused = false;
+    inSet = true;
+    pauseCount = 0;
+    //Serial.println(pauseCount);
+    
   }
+
 
 
 
