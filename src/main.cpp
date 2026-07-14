@@ -349,7 +349,8 @@ void loop() {
         //cout << "not moving" << endl;
         enableHighPass = true;
 
-    }
+
+}
     else{
       //cout << "moving" << endl;
       enableHighPass = false;
@@ -407,15 +408,71 @@ void loop() {
     if (pauseCount >= 2000 && inSet){
       inSet = false;
       set++;
-      //Serial.print("Set #: ");
-      //Serial.print(set);
-      //Serial.println(" done");
+      Serial.print("Set #: ");
+      Serial.print(set);
+      Serial.println(" done");
+      std::tuple<float, float, float> freshAngles = kinEngine.initialAngleCalculator(accelometerVals[0], accelometerVals[1], accelometerVals[2]);
+
+      qiNew = kinEngine.quaternionCalculator(freshAngles);
+      qiPrev = qiNew;
+
+
+      const int calibrationSamples = 200;
+      gyroValsXOffset = 0;
+      gyroValsYOffset = 0;
+      gyroValsZOffset = 0;
+
+      for (int i = 0; i < calibrationSamples; i++){ // Clean 0 to 199 loop
+          gyroVals = MPU6050.galvoXYZ();
+          gyroValsXOffset += gyroVals[0];
+          gyroValsYOffset += gyroVals[1];
+          gyroValsZOffset += gyroVals[2];
+          delay(5); // Give the sensor a tiny breath between samples
+      }
+
+      gyroValsXOffset /= static_cast<float>(calibrationSamples);
+      gyroValsYOffset /= static_cast<float>(calibrationSamples);
+      gyroValsZOffset /= static_cast<float>(calibrationSamples);
+
+      //cout << "gyro vals x offset " << gyroValsXOffset << endl;
+      //cout << "gyro vals y offset " << gyroValsYOffset << endl;
+      //cout << "gyro vals z offset " << gyroValsZOffset << endl;
       
+      gyroVals = MPU6050.galvoXYZ();
+      gyroVals[0] -= gyroValsXOffset;
+      gyroVals[1] -= gyroValsYOffset;
+      gyroVals[2] -= gyroValsZOffset;
+
+
+      accValsXOffset = 0;
+      accValsYOffset = 0;
+      accValsZOffset = 0;
+
+      for (int i = 0; i < calibrationSamples; i++){ 
+          accelometerVals = MPU6050.accelometerXYZ(); // Fixed: Use correct sensor method
+          accValsXOffset += accelometerVals[0];
+          accValsYOffset += accelometerVals[1];
+          accValsZOffset += accelometerVals[2];
+          delay(5); 
+      }
+
+      accValsXOffset /= static_cast<float>(calibrationSamples);
+      accValsYOffset /= static_cast<float>(calibrationSamples);
+      accValsZOffset /= static_cast<float>(calibrationSamples);
+
+      // Remove gravity from the Z offset so we only capture the sensor bias error
+      accValsZOffset -=   1.0f; 
+
+      accelometerVals = MPU6050.accelometerXYZ();
+      accelometerVals[0] -= accValsXOffset;
+      accelometerVals[1] -= accValsYOffset;
+      accelometerVals[2] -= accValsZOffset;
+
       sets.push_back(rep);
       rep = 0;
       halfRep=0;
     }
-    
+    cout << pauseCount << endl;
     if (moving == true){
       
       halfRep++;
@@ -427,8 +484,8 @@ void loop() {
         Serial.println(" ms");
         inRep = false;
       }
-      //Serial.print("rep count = ");
-      //Serial.println(rep);
+      Serial.print("rep count = ");
+      Serial.println(rep);
     }
     moving = false;
     paused = true;
@@ -436,7 +493,7 @@ void loop() {
       pauseCount++;
     }
 
-    //Serial.println(pauseCount);
+    Serial.println(pauseCount);
     
   }
   else{
@@ -449,7 +506,7 @@ void loop() {
     paused = false;
     inSet = true;
     pauseCount = 0;
-    //Serial.println(pauseCount);
+    Serial.println(pauseCount);
     
   }
 
