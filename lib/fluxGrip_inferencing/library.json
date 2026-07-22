@@ -1,0 +1,21 @@
+{
+  "name": "fluxGrip_inferencing",
+  "version": "1.0.0",
+  "build": {
+    "flags": [
+      "-I.",
+      "-Iedge-impulse-sdk",
+      "-Imodel-parameters",
+      "-Itflite-model"
+    ],
+    "srcFilter": [
+      "+<*>",
+      "+<edge-impulse-sdk/**/*.cpp>",
+      "+<edge-impulse-sdk/**/*.c>",
+      "+<tflite-model/**/*.cpp>",
+      "+<tflite-model/**/*.c>",
+      "+<model-parameters/**/*.cpp>",
+      "+<model-parameters/**/*.c>"
+    ]
+  }
+}

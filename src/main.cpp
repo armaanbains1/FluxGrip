@@ -9,6 +9,34 @@
 #include <iostream>
 #include <iomanip> // Required for hex, setw, and setfill
 #include <cstdint>
+#include "edge-impulse-sdk/classifier/ei_run_classifier.h"
+#define BUFFER_SIZE (EI_CLASSIFIER_RAW_SAMPLE_COUNT * EI_CLASSIFIER_RAW_SAMPLES_PER_FRAME)
+//AI - Model variable
+
+int timerCount = 0; //counts the number of times we have run the 5ms counter.
+
+float input_buf[BUFFER_SIZE] = {};
+int head = 0;
+
+static int get_signal_data(size_t offset, size_t length, float *out_ptr) {
+    if (out_ptr == NULL) return EIDSP_OUT_OF_MEM;
+
+    size_t start_index = offset * 6;
+    size_t count = length * 6;
+
+    for (size_t i = 0; i < count; i++) {
+        out_ptr[i] = input_buf[(head + start_index + i) % BUFFER_SIZE];
+    }
+    return EIDSP_OK;
+}
+
+void add_sensor_readings(const float* new_vals) {
+    for (size_t i = 0; i < 6; i++) {
+        input_buf[head] = new_vals[i];
+        head = (head + 1) % BUFFER_SIZE; // Moves head forward for each item
+    }
+}
+
 std::vector<float> accelometerVals;
 std::vector<float> accelometerValsN;
 float accelometerAverageX = 0;
@@ -18,6 +46,11 @@ float prevAccelometerAverageX = 0;
 float prevAccelometerAverageY = 0;
 float prevAccelometerAverageZ = 0;
 float accelometerCount = 0;
+
+float prevRawX = 0;
+float prevRawY = 0;
+float prevRawZ = 0;
+
 std::vector<float> adjustedAccelometerVals;
 std::vector<std::vector<float>> rawAccelometerStream;
 std::vector<int> sets;
@@ -45,9 +78,10 @@ int sampleCount = 0;
 float sampleAveragePrev = 0;
 float sampleAverageCurr = 0;
 float Kp = 0.35;
-float Ki = 0.05;
+float Ki = 0.0;
 
 bool enableHighPass = false;
+bool enableLowPass = false;
 
 uint32_t lastClockTime = 0;
 using namespace std;
@@ -74,7 +108,7 @@ bool moving = false;
 bool paused = true;
 int halfRep;
 int rep;
-int set;
+int setNum;
 int pauseCount = 0;
 bool inSet = false;
 bool inRep = false;
@@ -88,6 +122,11 @@ void printWord(uint32_t val){
               << val               // Finally, print the value
               << std::endl;        // Output: 0x12345678
 }
+
+
+
+unsigned long last_inference_time = 0;
+const unsigned long INFERENCE_INTERVAL_MS = 100; 
 
 void setup() {
   Wire.begin();
@@ -144,12 +183,21 @@ void setup() {
       delay(5); 
   }
 
+
   accValsXOffset /= static_cast<float>(calibrationSamples);
   accValsYOffset /= static_cast<float>(calibrationSamples);
   accValsZOffset /= static_cast<float>(calibrationSamples);
 
+  // Figure out what gravity SHOULD read at this starting orientation
+  // (qiPrev was already computed above from initialAngleCalculator)
+  Quaternion expectedGravityLocal = kinEngine.quaternionGlobalToLocal(qiPrev, {0, 0, 0, 1});
+
+  // Subtract expected gravity from each axis, not just a hardcoded 1.0 on Z
+  accValsXOffset -= expectedGravityLocal.qx;
+  accValsYOffset -= expectedGravityLocal.qy;
+  accValsZOffset -= expectedGravityLocal.qz;
+
   // Remove gravity from the Z offset so we only capture the sensor bias error
-  accValsZOffset -=   1.0f; 
 
   accelometerVals = MPU6050.accelometerXYZ();
   accelometerVals[0] -= accValsXOffset;
@@ -194,7 +242,6 @@ for (int i = 0; i < 10; i++){
     adjustedGravityVals = {qGravityVals.qx, qGravityVals.qy, qGravityVals.qz};
     
     error = kinEngine.vectorCrossProduct(accelometerValsN, adjustedGravityVals);
-
     gyroValsI[0] += error[0] * Ki * dt;
     gyroValsI[1] += error[1] * Ki * dt;
     gyroValsI[2] += error[2] * Ki * dt;
@@ -239,6 +286,15 @@ for (int i = 0; i < 10; i++){
   sampleAveragePrev = workEngine.calculateSampleAverage(accolometerTracker);
   cout << "the size is " << rawAccelometerStream.size() << endl;
 
+  for (int i = 0; i<400; i++){
+    float readings[6] = {
+        adjustedAccelometerVals[0], adjustedAccelometerVals[1], adjustedAccelometerVals[2],
+        gyroVals[0], gyroVals[1], gyroVals[2]
+    };
+    add_sensor_readings(readings);  
+  }
+
+   
 }
 
 
@@ -253,7 +309,7 @@ void loop() {
   if (clockTicksDT < 5000) {
     return; 
   }
-  
+  timerCount++;
   // If we get past the 'return', it means exactly 5ms (or slightly more) have passed!
   lastClockTime = currentClockTime; // Save the time for the next check
 
@@ -264,7 +320,7 @@ void loop() {
     sampleAverageCurr = workEngine.calculateSampleAverage(accolometerTracker);
     
 
-    if (sampleAverageCurr > -0.2 && sampleAverageCurr < 0.2 ){
+    if (sampleAverageCurr > -0.06 && sampleAverageCurr < 0.06 ){
       sampleAverageCurr = 0;
     }
     accolometerTracker.clear();
@@ -345,17 +401,32 @@ void loop() {
     accelometerCount = 0;
     
     rawAccelometerStream.clear();
-    if (kinEngine.getSensorPercentDifference(accelometerAverageX, prevAccelometerAverageX) < 5.30 && kinEngine.getSensorPercentDifference(accelometerAverageY, prevAccelometerAverageY) < 4.10 && kinEngine.getSensorPercentDifference(accelometerAverageZ, prevAccelometerAverageZ) < 4.0){
-        //cout << "not moving" << endl;
+    if (kinEngine.getSensorPercentDifference(accelometerAverageX, prevAccelometerAverageX) < 5.30 && kinEngine.getSensorPercentDifference(accelometerAverageY, prevAccelometerAverageY) < 4.10 && kinEngine.getSensorPercentDifference(accelometerAverageZ, prevAccelometerAverageZ) < 3.0){
+      // this was for the issue with holding the dumbell still, yet still technically "shaking it a bit"
+      // it essentially filters out that "shaking" 
+      //cout << "not moving" << endl;
         enableHighPass = true;
-
-
 }
     else{
       //cout << "moving" << endl;
       enableHighPass = false;
     }
-    
+
+    if (kinEngine.getSensorPercentDifference(accelometerVals[0], prevRawX) > 500.0 || 
+        kinEngine.getSensorPercentDifference(accelometerVals[1], prevRawY) > 500.0 || 
+        kinEngine.getSensorPercentDifference(accelometerVals[2], prevRawZ) > 500.0) {
+        
+       // enableLowPass = true;  // Impact/Shock detected!
+    } 
+    else {
+      //  enableLowPass = false;
+    }
+
+    // Save current raw values as the previous raw baseline for the next frame
+    prevRawX = accelometerVals[0];
+    prevRawY = accelometerVals[1];
+    prevRawZ = accelometerVals[2];
+
   }
 
 
@@ -365,18 +436,25 @@ void loop() {
   
   // Make sure both vectors are normalized before cross product!
   error = kinEngine.vectorCrossProduct(accelometerValsN, adjustedGravityVals);
+  //cout << "error: " << error[0] << " " << error[1] << " " << error[2] << endl;
 
 
   // 4. Handle corrections based on high-pass state
-  if (enableHighPass) {
+  if (enableHighPass || enableLowPass) {
     // Clear and freeze the integral vector so noise can't compound
-    gyroVals = {0.0f, 0.0f, 0.0f}; 
+    //gyroVals = {0.0f, 0.0f, 0.0f}; 
     gyroValsI = {0.0f, 0.0f, 0.0f}; 
   } else {
     // Only integrate gravity/motion errors when actively moving
     gyroValsI[0] += error[0] * Ki * dt;
     gyroValsI[1] += error[1] * Ki * dt;
     gyroValsI[2] += error[2] * Ki * dt;
+  }
+
+  if (enableLowPass){
+    cout << "TOOO FAST" << endl;
+
+    accelometerValsN = {0,0,1};
   }
 
   // ALWAYS keep Kp alive to keep your orientation quaternion anchored to gravity
@@ -397,7 +475,9 @@ void loop() {
   qAdjustedAccelometerVals = kinEngine.quaternionLocalToGlobal(qiNew, qAccelometerVals);
   adjustedAccelometerVals = {qAdjustedAccelometerVals.qx, qAdjustedAccelometerVals.qy, qAdjustedAccelometerVals.qz};
 
-  //cout << "X: " << adjustedAccelometerVals[0] << "    Y:  " << adjustedAccelometerVals[1] << "    Z:" << adjustedAccelometerVals[2]+1 << endl;
+
+
+  //cout << "X: " << adjustedAccelometerVals[0] << "    Y:  " << adjustedAccelometerVals[1] << "    Z:" << adjustedAccelometerVals[2] -1<< endl;
   ////cout << "    Z:" << adjustedAccelometerVals[2] * 100;
   //cout << "X: " << correctedGyroX << "    Y:  " << correctedGyroY << "    Z:" << correctedGyroZ << endl;
 
@@ -407,20 +487,15 @@ void loop() {
   if (workEngine.checkForPaused(movementTrackerForWorkEngine)){
     if (pauseCount >= 2000 && inSet){
       inSet = false;
-      set++;
+      setNum++;
       Serial.print("Set #: ");
-      Serial.print(set);
+      Serial.print(setNum);
       Serial.println(" done");
       std::tuple<float, float, float> freshAngles = kinEngine.initialAngleCalculator(accelometerVals[0], accelometerVals[1], accelometerVals[2]);
 
-      qiNew = kinEngine.quaternionCalculator(freshAngles);
-      qiPrev = qiNew;
-
+      qiPrev = kinEngine.quaternionCalculator(freshAngles);
 
       const int calibrationSamples = 200;
-      gyroValsXOffset = 0;
-      gyroValsYOffset = 0;
-      gyroValsZOffset = 0;
 
       for (int i = 0; i < calibrationSamples; i++){ // Clean 0 to 199 loop
           gyroVals = MPU6050.galvoXYZ();
@@ -444,9 +519,6 @@ void loop() {
       gyroVals[2] -= gyroValsZOffset;
 
 
-      accValsXOffset = 0;
-      accValsYOffset = 0;
-      accValsZOffset = 0;
 
       for (int i = 0; i < calibrationSamples; i++){ 
           accelometerVals = MPU6050.accelometerXYZ(); // Fixed: Use correct sensor method
@@ -456,32 +528,45 @@ void loop() {
           delay(5); 
       }
 
+
       accValsXOffset /= static_cast<float>(calibrationSamples);
       accValsYOffset /= static_cast<float>(calibrationSamples);
       accValsZOffset /= static_cast<float>(calibrationSamples);
 
+      // Figure out what gravity SHOULD read at this starting orientation
+      // (qiPrev was already computed above from initialAngleCalculator)
+      Quaternion expectedGravityLocal = kinEngine.quaternionGlobalToLocal(qiPrev, {0, 0, 0, 1});
+
+      // Subtract expected gravity from each axis, not just a hardcoded 1.0 on Z
+      accValsXOffset -= expectedGravityLocal.qx;
+      accValsYOffset -= expectedGravityLocal.qy;
+      accValsZOffset -= expectedGravityLocal.qz;
+
       // Remove gravity from the Z offset so we only capture the sensor bias error
-      accValsZOffset -=   1.0f; 
 
       accelometerVals = MPU6050.accelometerXYZ();
       accelometerVals[0] -= accValsXOffset;
       accelometerVals[1] -= accValsYOffset;
       accelometerVals[2] -= accValsZOffset;
 
+
+      Quaternion initialQw = {0, gyroVals[0], gyroVals[1], gyroVals[2]};
+      qiNew = kinEngine.GyroQuaternionUpdater(qiPrev, initialQw, 0.00000001);
+
       sets.push_back(rep);
       rep = 0;
       halfRep=0;
     }
-    cout << pauseCount << endl;
+    //cout << pauseCount << endl;
     if (moving == true){
       
       halfRep++;
       rep = halfRep / 2;
       if (inRep == true){
         halfrepTime = millis() - halfrepTimerStart;
-        Serial.print("Phase Duration: ");
-        Serial.print(halfrepTime);
-        Serial.println(" ms");
+        //Serial.print("Phase Duration: ");
+        //Serial.print(halfrepTime);
+        //Serial.println(" ms");
         inRep = false;
       }
       Serial.print("rep count = ");
@@ -493,7 +578,7 @@ void loop() {
       pauseCount++;
     }
 
-    Serial.println(pauseCount);
+    //Serial.println(pauseCount);
     
   }
   else{
@@ -501,19 +586,77 @@ void loop() {
       halfrepTimerStart = millis();
       inRep = true;
     }
-    
     moving = true;
     paused = false;
     inSet = true;
     pauseCount = 0;
-    Serial.println(pauseCount);
+    //Serial.println(pauseCount);
     
   }
 
 
+/*
+Serial.print(adjustedAccelometerVals[0]); Serial.print(",");
+Serial.print(adjustedAccelometerVals[1]); Serial.print(",");
+Serial.print(adjustedAccelometerVals[2]); Serial.print(",");
+Serial.print(gyroVals[0]); Serial.print(",");
+Serial.print(gyroVals[1]); Serial.print(",");
+Serial.println(gyroVals[2]);
+*/
+/**/
+    float readings[6] = {
+    adjustedAccelometerVals[0], adjustedAccelometerVals[1], adjustedAccelometerVals[2],
+    gyroVals[0], gyroVals[1], gyroVals[2]
+};
 
+// Only process a new window frame when 20ms (5ms * 4) has passed
+if (timerCount >= 4) {
+    timerCount = 0;
 
+    // 1. Push readings into circular array
+    add_sensor_readings(readings);
 
+    // 2. Unroll the circular buffer into a linear flat array
+    static float flat_buf[BUFFER_SIZE];
+    for (size_t i = 0; i < BUFFER_SIZE; i++) {
+        flat_buf[i] = input_buf[(head + i) % BUFFER_SIZE];
+    }
 
+    // 3. Convert flat array into Edge Impulse signal
+    signal_t ei_signal;
+    int signal_res = numpy::signal_from_buffer(flat_buf, BUFFER_SIZE, &ei_signal);
+    if (signal_res != 0) {
+        Serial.printf("ERR: Failed to create signal from buffer (%d)\n", signal_res);
+        return;
+    }
+
+    // 4. Run classification
+    static ei_impulse_result_t result = { 0 };
+    EI_IMPULSE_ERROR res = run_classifier(&ei_signal, &result, false);
+
+    if (res != EI_IMPULSE_OK) {
+        Serial.printf("ERR: Failed to run classifier (%d)\n", res);
+        return;
+    }
+
+    // 5. Find top class prediction
+    String topClass = "Idle";
+    float topVal = 0.0f;
+
+    for (size_t ix = 0; ix < EI_CLASSIFIER_LABEL_COUNT; ix++) {
+        if (result.classification[ix].value > topVal) {
+            topVal = result.classification[ix].value;
+            topClass = String(result.classification[ix].label);
+        }
+    }
+
+    // 6. Output ONLY JSON payload for the HTML dashboard over USB Serial
+    /*
+    Serial.printf("{\"ex\":\"%s\",\"conf\":%d,\"rep\":%d,\"setNum\":%d}\n", 
+                  topClass.c_str(), 
+                  (int)(topVal * 100), 
+                  rep, 
+                  setNum);
+    */
+  }
 }
-

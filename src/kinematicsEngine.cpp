@@ -54,7 +54,7 @@ Quaternion kinematicsEngine::normalizer(Quaternion q) {
 }
 
 Quaternion kinematicsEngine::GyroQuaternionUpdater(Quaternion qi, Quaternion qw, float dt){    //qi + 1 = qi + qwqi*dt/2
-    Quaternion qiNew = quarternionAddition(qi, quarternionConstantMultiply(quarternionMultiply(qw, qi),(dt/2)));
+    Quaternion qiNew = quarternionAddition(qi, quarternionConstantMultiply(quarternionMultiply(qi, qw),(dt/2)));
     qiNew = normalizer(qiNew);
     return qiNew;
 }
