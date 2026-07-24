@@ -2,6 +2,7 @@
 #include <Wire.h>
 #include <iostream>
 #include <vector> // 
+#include <unordered_map>
 #include "i2cSensor.h"
 #include "kinematicsEngine.h"
 #include "workoutEngine.h"
@@ -9,11 +10,15 @@
 #include <iostream>
 #include <iomanip> // Required for hex, setw, and setfill
 #include <cstdint>
+#include <string>
 #include "edge-impulse-sdk/classifier/ei_run_classifier.h"
 #define BUFFER_SIZE (EI_CLASSIFIER_RAW_SAMPLE_COUNT * EI_CLASSIFIER_RAW_SAMPLES_PER_FRAME)
-//AI - Model variable
 
-int timerCount = 0; //counts the number of times we have run the 5ms counter.
+
+//AI - Model variables
+std::unordered_map<std::string, int> aiModel;
+
+int timerCount = 0; //counts the number of times we have run the 5ms counter
 
 float input_buf[BUFFER_SIZE] = {};
 int head = 0;
@@ -30,10 +35,10 @@ static int get_signal_data(size_t offset, size_t length, float *out_ptr) {
     return EIDSP_OK;
 }
 
-void add_sensor_readings(const float* new_vals) {
-    for (size_t i = 0; i < 6; i++) {
-        input_buf[head] = new_vals[i];
-        head = (head + 1) % BUFFER_SIZE; // Moves head forward for each item
+void add_sensor_readings(float readings[8]) {
+    for (int i = 0; i < 8; i++) {
+        input_buf[head] = readings[i];
+        head = (head + 1) % BUFFER_SIZE; // BUFFER_SIZE must be 800!
     }
 }
 
@@ -108,6 +113,7 @@ bool moving = false;
 bool paused = true;
 int halfRep;
 int rep;
+int repCount;
 int setNum;
 int pauseCount = 0;
 bool inSet = false;
@@ -300,8 +306,7 @@ for (int i = 0; i < 10; i++){
 
 
 void loop() {
-  // 1. Keep track of timing
-  // 1. Enforce the 5000 microsecond (5ms) rate limit
+
   uint32_t currentClockTime = micros();
   uint32_t clockTicksDT = currentClockTime - lastClockTime;
 
@@ -310,8 +315,7 @@ void loop() {
     return; 
   }
   timerCount++;
-  // If we get past the 'return', it means exactly 5ms (or slightly more) have passed!
-  lastClockTime = currentClockTime; // Save the time for the next check
+  lastClockTime = currentClockTime; 
 
   float dt = static_cast<float>(clockTicksDT) / 1000000.0f;
   accolometerTracker.push_back(adjustedAccelometerVals[2]-1);
@@ -346,7 +350,6 @@ void loop() {
   }
 
 
-  // 2. Read latest sensor data
   gyroVals = MPU6050.galvoXYZ();
   gyroVals[0] = (gyroVals[0] - gyroValsXOffset) * DEG_TO_RAD;
   gyroVals[1] = (gyroVals[1] - gyroValsYOffset) * DEG_TO_RAD;
@@ -486,11 +489,20 @@ void loop() {
 
   if (workEngine.checkForPaused(movementTrackerForWorkEngine)){
     if (pauseCount >= 2000 && inSet){
+      repCount = rep;
       inSet = false;
       setNum++;
       Serial.print("Set #: ");
       Serial.print(setNum);
       Serial.println(" done");
+      int currentMax = 0;
+      std::string maxProbabilityExcercise;
+      for (auto&excercise : aiModel){
+        if (excercise.second > currentMax){
+          maxProbabilityExcercise = excercise.first;
+        }
+      }
+      aiModel.clear();
       std::tuple<float, float, float> freshAngles = kinEngine.initialAngleCalculator(accelometerVals[0], accelometerVals[1], accelometerVals[2]);
 
       qiPrev = kinEngine.quaternionCalculator(freshAngles);
@@ -537,7 +549,6 @@ void loop() {
       // (qiPrev was already computed above from initialAngleCalculator)
       Quaternion expectedGravityLocal = kinEngine.quaternionGlobalToLocal(qiPrev, {0, 0, 0, 1});
 
-      // Subtract expected gravity from each axis, not just a hardcoded 1.0 on Z
       accValsXOffset -= expectedGravityLocal.qx;
       accValsYOffset -= expectedGravityLocal.qy;
       accValsZOffset -= expectedGravityLocal.qz;
@@ -594,35 +605,37 @@ void loop() {
     
   }
 
+float pitch = atan2(adjustedAccelometerVals[0], sqrt(adjustedAccelometerVals[1]*adjustedAccelometerVals[1] + adjustedAccelometerVals[2]*adjustedAccelometerVals[2])) * 180.0 / M_PI;
+float roll  = atan2(adjustedAccelometerVals[1], sqrt(adjustedAccelometerVals[0]*adjustedAccelometerVals[0] + adjustedAccelometerVals[2]*adjustedAccelometerVals[2])) * 180.0 / M_PI;
 
-/*
+
 Serial.print(adjustedAccelometerVals[0]); Serial.print(",");
 Serial.print(adjustedAccelometerVals[1]); Serial.print(",");
 Serial.print(adjustedAccelometerVals[2]); Serial.print(",");
 Serial.print(gyroVals[0]); Serial.print(",");
 Serial.print(gyroVals[1]); Serial.print(",");
-Serial.println(gyroVals[2]);
-*/
-/**/
-    float readings[6] = {
+Serial.print(gyroVals[2]); Serial.print(",");
+Serial.print(pitch); Serial.print(",");
+Serial.println(roll); // End the line here!
+
+   // 1. Expand array to 8 features including pitch and roll
+float readings[8] = {
     adjustedAccelometerVals[0], adjustedAccelometerVals[1], adjustedAccelometerVals[2],
-    gyroVals[0], gyroVals[1], gyroVals[2]
+    gyroVals[0],                gyroVals[1],                gyroVals[2],
+    pitch,                      roll
 };
 
-// Only process a new window frame when 20ms (5ms * 4) has passed
 if (timerCount >= 4) {
     timerCount = 0;
 
-    // 1. Push readings into circular array
+    // 2. Push all 8 features into your buffer
     add_sensor_readings(readings);
 
-    // 2. Unroll the circular buffer into a linear flat array
     static float flat_buf[BUFFER_SIZE];
     for (size_t i = 0; i < BUFFER_SIZE; i++) {
         flat_buf[i] = input_buf[(head + i) % BUFFER_SIZE];
     }
 
-    // 3. Convert flat array into Edge Impulse signal
     signal_t ei_signal;
     int signal_res = numpy::signal_from_buffer(flat_buf, BUFFER_SIZE, &ei_signal);
     if (signal_res != 0) {
@@ -630,7 +643,6 @@ if (timerCount >= 4) {
         return;
     }
 
-    // 4. Run classification
     static ei_impulse_result_t result = { 0 };
     EI_IMPULSE_ERROR res = run_classifier(&ei_signal, &result, false);
 
@@ -639,24 +651,26 @@ if (timerCount >= 4) {
         return;
     }
 
-    // 5. Find top class prediction
-    String topClass = "Idle";
+    std::string topClass = "Idle";
     float topVal = 0.0f;
 
     for (size_t ix = 0; ix < EI_CLASSIFIER_LABEL_COUNT; ix++) {
         if (result.classification[ix].value > topVal) {
             topVal = result.classification[ix].value;
-            topClass = String(result.classification[ix].label);
+            topClass = std::string(result.classification[ix].label);
         }
     }
 
-    // 6. Output ONLY JSON payload for the HTML dashboard over USB Serial
-    /*
-    Serial.printf("{\"ex\":\"%s\",\"conf\":%d,\"rep\":%d,\"setNum\":%d}\n", 
-                  topClass.c_str(), 
-                  (int)(topVal * 100), 
-                  rep, 
-                  setNum);
-    */
-  }
+    if (moving){
+      aiModel[topClass] += 1;
+    }
+                        // Print JSON string matching HTML expectations
+      Serial.printf("{\"maxProbabilityExcercise\":\"%s\",\"conf\":%d,\"rep\":%d,\"setNum\":%d}\n", 
+                    topClass.c_str(), 
+                    (int)(topVal * 100), 
+                    rep, 
+                    setNum);
+    
+}
+  
 }
