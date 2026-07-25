@@ -35,6 +35,21 @@ bool workoutEngine::checkForPaused(std::vector<float> stream){
     }
 }
 
+bool workoutEngine::checkForPausedSensitive(std::vector<float> stream){
+    int count = std::count(stream.begin(), stream.end(), 0);
+    if ((count >= 5)){
+        //cout << "trued, count is "  << count << endl;
+            
+        return true;
+    }
+    else{
+        //cout << "false" << endl;
+
+        return false;
+    }
+}
+
+
 bool workoutEngine::checkForMoving(std::vector<float> stream){
     //cout << stream.size() << endl;
     int count = std::count(stream.begin(), stream.end(), 0);

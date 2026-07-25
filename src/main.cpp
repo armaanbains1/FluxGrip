@@ -17,7 +17,8 @@
 
 //AI - Model variables
 std::unordered_map<std::string, int> aiModel;
-
+std::string maxProbabilityExcercise;
+std::string prevMaxProbabilityExcercise;
 int timerCount = 0; //counts the number of times we have run the 5ms counter
 
 float input_buf[BUFFER_SIZE] = {};
@@ -77,7 +78,7 @@ std::vector<float> gyroValsI = {0,0,0};
 std::vector<float> error;
 
 std::vector<float> accolometerTracker {};
-std::vector<float> movementTrackerForWorkEngine {0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1};
+std::vector<float> movementTrackerForWorkEngine {0,0,0,0,0,0,0,0,0,0};
 int movementCounter = 0;
 int sampleCount = 0;
 float sampleAveragePrev = 0;
@@ -496,12 +497,18 @@ void loop() {
       Serial.print(setNum);
       Serial.println(" done");
       int currentMax = 0;
-      std::string maxProbabilityExcercise;
+      maxProbabilityExcercise = "Idle"; // Default reset
       for (auto&excercise : aiModel){
         if (excercise.second > currentMax){
+          currentMax = excercise.second;
           maxProbabilityExcercise = excercise.first;
         }
       }
+      if (prevMaxProbabilityExcercise!=maxProbabilityExcercise){
+        setNum = 1;
+      }
+      prevMaxProbabilityExcercise = maxProbabilityExcercise;
+
       aiModel.clear();
       std::tuple<float, float, float> freshAngles = kinEngine.initialAngleCalculator(accelometerVals[0], accelometerVals[1], accelometerVals[2]);
 
@@ -605,10 +612,11 @@ void loop() {
     
   }
 
+
 float pitch = atan2(adjustedAccelometerVals[0], sqrt(adjustedAccelometerVals[1]*adjustedAccelometerVals[1] + adjustedAccelometerVals[2]*adjustedAccelometerVals[2])) * 180.0 / M_PI;
 float roll  = atan2(adjustedAccelometerVals[1], sqrt(adjustedAccelometerVals[0]*adjustedAccelometerVals[0] + adjustedAccelometerVals[2]*adjustedAccelometerVals[2])) * 180.0 / M_PI;
 
-
+/*
 Serial.print(adjustedAccelometerVals[0]); Serial.print(",");
 Serial.print(adjustedAccelometerVals[1]); Serial.print(",");
 Serial.print(adjustedAccelometerVals[2]); Serial.print(",");
@@ -617,7 +625,7 @@ Serial.print(gyroVals[1]); Serial.print(",");
 Serial.print(gyroVals[2]); Serial.print(",");
 Serial.print(pitch); Serial.print(",");
 Serial.println(roll); // End the line here!
-
+*/
    // 1. Expand array to 8 features including pitch and roll
 float readings[8] = {
     adjustedAccelometerVals[0], adjustedAccelometerVals[1], adjustedAccelometerVals[2],
@@ -651,25 +659,33 @@ if (timerCount >= 4) {
         return;
     }
 
+// 1. Always evaluate predictions cleanly per frame
     std::string topClass = "Idle";
     float topVal = 0.0f;
 
     for (size_t ix = 0; ix < EI_CLASSIFIER_LABEL_COUNT; ix++) {
-        if (result.classification[ix].value > topVal) {
+        // Use a small threshold (e.g., > 0.5f or > topVal) so noise doesn't lock a class
+        if (result.classification[ix].value > topVal && result.classification[ix].value > 0.6f) {
             topVal = result.classification[ix].value;
             topClass = std::string(result.classification[ix].label);
         }
     }
 
-    if (moving){
-      aiModel[topClass] += 1;
+    if (!workEngine.checkForPausedSensitive(movementTrackerForWorkEngine)) {
+        if (topClass != "Idle") {
+            aiModel[topClass] += 1;
+        }
+    } else {
+        // If movement stops, force topClass back to Idle
+        topClass = "Idle";
     }
-                        // Print JSON string matching HTML expectations
-      Serial.printf("{\"maxProbabilityExcercise\":\"%s\",\"conf\":%d,\"rep\":%d,\"setNum\":%d}\n", 
-                    topClass.c_str(), 
-                    (int)(topVal * 100), 
-                    rep, 
-                    setNum);
+
+    // 2. Stream JSON to Serial
+    Serial.printf("{\"maxProbabilityExcercise\":\"%s\",\"conf\":%d,\"rep\":%d,\"setNum\":%d}\n", 
+                  topClass.c_str(), 
+                  (int)(topVal * 100), 
+                  rep, 
+                  setNum);
     
 }
   
