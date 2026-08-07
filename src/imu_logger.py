@@ -8,11 +8,9 @@ SERIAL_PORT = 'COM3'
 BAUD_RATE = 115200
 
 def record_exercise_session():
-    # 1. Get exercise details
     exercise_name = input("Enter exercise label (e.g., bicepCurl, lateralRaise): ").strip()
     set_number = input("Enter set number (e.g., 1, 2, 3): ").strip()
     
-    # 2. Build target directory relative to current workspace (training data/bicepCurl)
     target_dir = os.path.join("training data", exercise_name)
     os.makedirs(target_dir, exist_ok=True)
     
@@ -21,7 +19,7 @@ def record_exercise_session():
     print(f"\n[Connecting] Opening connection to {SERIAL_PORT}...")
     try:
         ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
-        time.sleep(2) # Reset delay for microcontroller
+        time.sleep(2) 
         print("[Connected] Ready to log.")
     except Exception as e:
         print(f"[Error] Could not open serial port: {e}")
@@ -36,7 +34,6 @@ def record_exercise_session():
     input("Press ENTER when you are ready to start lifting...")
     print("\n>>> RECORDING STARTED! Live streaming to CSV... >>>\n")
     
-    # 3. Open file and log 8 channels
     with open(filename, mode='w', newline='') as file:
         writer = csv.writer(file)
         writer.writerow(["accelX", "accelY", "accelZ", "gyroX", "gyroY", "gyroZ", "pitch", "roll"])
