@@ -8,7 +8,6 @@
 byte i2cSensor::deviceFinder(){
   byte error, address;
   int nDevices;
-  Serial.println("Scanning...");
   nDevices = 0;
   if (nDevices == 0) {
     Serial.println("No I2C devices found\n");
@@ -39,29 +38,25 @@ byte i2cSensor::deviceFinder(){
 }
 
 void i2cSensor::configureAccelerator(){
-    // ----- MPU6050 Initialization -----
   Wire.beginTransmission(MPU_ADDR);
-  Wire.write(0x6B);           // PWR_MGMT_1 register
+  Wire.write(0x6B);           
   Wire.write(0x00);           // Wake up MPU6050 (set sleep = 0)
   Wire.endTransmission(true);
 
   // Set accelerometer range to ±2g (most stable)
   Wire.beginTransmission(MPU_ADDR);
   Wire.write(0x1C);           // ACCEL_CONFIG register
-  Wire.write(0x00);           // ±2g range
+  Wire.write(0x00);           // 2g range
   Wire.endTransmission(true);
 
-  // Set sample rate (optional)
   Wire.beginTransmission(MPU_ADDR);
-  Wire.write(0x19);           // SMPLRT_DIV register
+  Wire.write(0x19);           
   Wire.write(0x07);           // Sample rate = 1kHz / (7+1) = 125Hz
   Wire.endTransmission(true);
 
-  //Serial.println("MPU6050 Initialized for Raw Accelerometer Readings");
 }
 
 void i2cSensor::configureGyroscope(){
-    // ----- MPU6050 Initialization -----
   Wire.beginTransmission(MPU_ADDR);
   Wire.write(0x6B);     // Wake up sensor
   Wire.write(0x00);
@@ -73,7 +68,6 @@ void i2cSensor::configureGyroscope(){
   Wire.write(0x00);     // ±250dps
   Wire.endTransmission(true);
 
-  //Serial.println("MPU6050 Initialized for Raw Gyroscope Readings");
 }
 
 
