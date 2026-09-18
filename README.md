@@ -67,4 +67,4 @@ The classifier is trained through Edge Impulse under the project fluxGrip. See t
 
 ## Status and Notes
 
-This is an active work in progress. Sensor fusion constants (such as Kp and Ki) and pause thresholds have been tuned experimentally and may need further adjustment for different devices or mounting positions. Some legacy or experimental code paths (such as low pass filtering for impact detection) are present but currently disabled.
+This is an active work in progress. Sensor fusion constants (such as Kp and Ki) and pause thresholds have been tuned experimentally and may need further adjustment for different devices or mounting positions. 
