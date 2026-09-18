@@ -139,17 +139,14 @@ Quaternion kinematicsEngine::quaternionLocalToGlobal(Quaternion q1, Quaternion A
 }
 
 Quaternion kinematicsEngine::quaternionGlobalToLocal(Quaternion q1, Quaternion A) {
-    // 1. Properly calculate the conjugate of q1
     Quaternion q1_conjugate;
     q1_conjugate.qw =  q1.qw;
     q1_conjugate.qx = -q1.qx; // Fixed: was overwriting qw
     q1_conjugate.qy = -q1.qy; // Fixed: was overwriting qw
     q1_conjugate.qz = -q1.qz; // Fixed: was overwriting qw
 
-    // 2. Multiply conjugate first: intermediate = q1_conjugate * A
     Quaternion intermediate = quarternionMultiply(q1_conjugate, A);
 
-    // 3. Multiply by the original quaternion: local_vector = intermediate * q1
     Quaternion local_vector = quarternionMultiply(intermediate, q1);
 
     return local_vector;
@@ -181,17 +178,13 @@ std::vector<float> kinematicsEngine::vectorCrossProduct(std::vector<float> a, st
 
 
 float kinematicsEngine::getSensorPercentDifference(float a, float b) {
-    // 1. Calculate the absolute difference between the two points
     float absoluteDiff = std::abs(a - b);
     
-    // 2. Use the average of their magnitudes to prevent zero-crossing issues
     float averageMagnitude = (std::abs(a) + std::abs(b)) / 2.0f;
     
-    // 3. Catch the case where both sensors are reading exactly 0.0
     if (averageMagnitude == 0.0f) {
         return 0.0f;
     }
     
-    // 4. Return the percentage difference
     return (absoluteDiff / averageMagnitude) * 100.0f;
 }
