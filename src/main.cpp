@@ -195,7 +195,7 @@ void setup() {
   accValsYOffset /= static_cast<float>(calibrationSamples);
   accValsZOffset /= static_cast<float>(calibrationSamples);
 
-  // Figure out what gravity SHOULD read at this starting orientation
+  // Figure out what gravity should read at this starting orientation
   // (qiPrev was already computed above from initialAngleCalculator)
   Quaternion expectedGravityLocal = kinEngine.quaternionGlobalToLocal(qiPrev, {0, 0, 0, 1});
 
@@ -420,7 +420,7 @@ void loop() {
         kinEngine.getSensorPercentDifference(accelometerVals[1], prevRawY) > 500.0 || 
         kinEngine.getSensorPercentDifference(accelometerVals[2], prevRawZ) > 500.0) {
         
-       // enableLowPass = true;  // Impact/Shock detected!
+       // enableLowPass = true;  // Impact/Shock detected
     } 
     else {
       //  enableLowPass = false;
@@ -434,16 +434,16 @@ void loop() {
   }
 
 
-  // 3. Compute error vector using CURRENT attitude state (qiNew)
+  // Compute error vector using curr attitude state (qiNew)
   qGravityVals = kinEngine.quaternionGlobalToLocal(qiNew, {0, 0, 0, 1}); // Global gravity is [0, 0, 1]
   adjustedGravityVals = {qGravityVals.qx, qGravityVals.qy, qGravityVals.qz};
   
-  // Make sure both vectors are normalized before cross product!
+  // Make sure both vectors are normalized before cross product
   error = kinEngine.vectorCrossProduct(accelometerValsN, adjustedGravityVals);
   //cout << "error: " << error[0] << " " << error[1] << " " << error[2] << endl;
 
 
-  // 4. Handle corrections based on high-pass state
+  // Handle corrections based on high-pass state
   if (enableHighPass || enableLowPass) {
     // Clear and freeze the integral vector so noise can't compound
     //gyroVals = {0.0f, 0.0f, 0.0f}; 
@@ -461,7 +461,7 @@ void loop() {
     accelometerValsN = {0,0,1};
   }
 
-  // ALWAYS keep Kp alive to keep your orientation quaternion anchored to gravity
+  // keep Kp alive to keep orientation quaternion anchored to gravity
   Kp = 0.35f; 
 
   float correctedGyroX = gyroVals[0] + (Kp * error[0]) + gyroValsI[0];
@@ -469,12 +469,12 @@ void loop() {
   float correctedGyroZ = gyroVals[2] + (Kp * error[2]) + gyroValsI[2];
   //cout << "X: " << correctedGyroX << "    Y:  " << correctedGyroY << "    Z:" << correctedGyroZ << endl;
 
-  // 5. Update the orientation quaternion using the freshly corrected values
+  //Update the orientation quaternion using the freshly corrected values
   Quaternion newQw = {0, correctedGyroX, correctedGyroY, correctedGyroZ};
   qiPrev = qiNew;
   qiNew = kinEngine.GyroQuaternionUpdater(qiPrev, newQw, dt);
 
-  // 6. Optional: Project raw acceleration into the global frame if needed
+  //Project raw acceleration into the global frame
   Quaternion qAccelometerVals = {0, accelometerVals[0], accelometerVals[1], accelometerVals[2]};
   qAdjustedAccelometerVals = kinEngine.quaternionLocalToGlobal(qiNew, qAccelometerVals);
   adjustedAccelometerVals = {qAdjustedAccelometerVals.qx, qAdjustedAccelometerVals.qy, qAdjustedAccelometerVals.qz};
